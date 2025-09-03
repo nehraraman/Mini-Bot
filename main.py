@@ -523,27 +523,33 @@ async def bot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.edit_text(f"📞 Support group: {SUPPORT_LINK}", reply_markup=back_kb); return
     await q.message.edit_text("Not implemented.", reply_markup=back_kb)
 
-def run_bot():
-    if not BOT_TOKEN:
-        logger.error("BOT_TOKEN missing — bot will not start.")
-        return
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    try:
-        application = Application.builder().token(BOT_TOKEN).build()
-        application.add_handler(CommandHandler("start", bot_start))
-        application.add_handler(CallbackQueryHandler(bot_callback))
-        logger.info("Bot polling starting...")
-        application.run_polling()
-    except Exception as e:
-        logger.error(f"Bot error: {e}")
-
-# ---------- start ----------
-if __name__ == "__main__":
+# ---------- start / run both services in main asyncio loop ----------
+async def start_services():
+    # ensure DB schema ready
     migrate()
-    t = threading.Thread(target=run_bot, daemon=True)
-    t.start()
-    logger.info(f"Starting HTTP server on port {PORT} ...")
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, log_level="info")
+
+    # build telegram application (handlers)
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", bot_start))
+    application.add_handler(CallbackQueryHandler(bot_callback))
+
+    # start bot polling as a task (this is an async coroutine)
+    bot_task = asyncio.create_task(application.run_polling())
+
+    # start uvicorn server as an async task (server.serve is awaitable)
+    config = uvicorn.Config(app=app, host="0.0.0.0", port=PORT, log_level="info")
+    server = uvicorn.Server(config)
+    server_task = asyncio.create_task(server.serve())
+
+    logger.info("Started bot and HTTP server tasks. Waiting for them to finish...")
+    # wait for both (they normally run forever)
+    await asyncio.gather(bot_task, server_task)
+
+if __name__ == "__main__":
+    try:
+        # run both services in the main thread event loop
+        asyncio.run(start_services())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Shutting down (KeyboardInterrupt/SystemExit).")
+    except Exception as e:
+        logger.exception("Fatal error while starting services: %s", e)
