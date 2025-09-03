@@ -1,7 +1,0 @@
-services:
-  - type: worker
-    name: xreward-bot
-    env: python
-    region: oregon
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
