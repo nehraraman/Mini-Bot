@@ -1,292 +1,209 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>X_Reward_Bot — Mini App</title>
+  <title>Mini App - X Reward Bot</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:16px;background:#f7f7fb;color:#111}
-    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-    button{padding:8px 12px;border-radius:8px;border:0;background:#0066ff;color:#fff;cursor:pointer}
-    .muted{color:#666;font-size:13px}
-    .card{background:#fff;padding:12px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:10px}
-    input,select{padding:8px;border-radius:6px;border:1px solid #ddd;width:100%}
-    .row{display:flex;gap:8px}
-    .small{font-size:13px}
-    img.preview{max-width:200px;border-radius:8px;display:block;margin-top:8px}
-    .error{color:#b00020}
-    .success{color:#007a3d}
+    body{font-family:Arial,Helvetica,sans-serif;margin:12px}
+    .card{border:1px solid #ddd;padding:10px;margin-bottom:10px;border-radius:8px}
+    button{padding:8px 12px;border-radius:6px}
+    img.preview{max-width:200px;display:block;margin-top:8px}
   </style>
 </head>
 <body>
-  <header>
-    <h2>X Reward — Mini App</h2>
-    <div>
-      <button id="openTelegramBtn" style="display:none">Open in Telegram</button>
-    </div>
-  </header>
+  <h2>X Reward Mini App</h2>
+  <div id="status" class="card">Loading...</div>
 
-  <div id="status" class="muted card">Initializing…</div>
-
-  <div id="userCard" class="card" style="display:none">
-    <div><strong id="userName">User</strong> — <span id="userId" class="muted"></span></div>
-    <div style="margin-top:8px">Coins: <strong id="coins">0</strong></div>
-    <div class="muted small" id="boostInfo"></div>
+  <div id="usercard" class="card" style="display:none">
+    <div><strong id="uname"></strong> (<span id="uid"></span>)</div>
+    <div>Coins: <span id="coins">0</span></div>
+    <div><a id="ref" href="#" target="_blank">Referral</a></div>
+    <div id="adminNote" style="color:green;display:none"><strong>Admin mode</strong></div>
   </div>
 
-  <div id="actions" style="display:none">
-    <div class="card">
-      <h3 class="small">Tasks</h3>
-      <div id="tasksList" class="small">Loading tasks…</div>
+  <div id="ads" class="card">
+    <h4>Watch Ad (options)</h4>
+    <div>
+      <button id="btnOffer">Get Ad Offer (recommended)</button>
+      <button id="btnWatched">I've watched an ad (quick claim)</button>
+      <div id="adStatus"></div>
     </div>
+  </div>
 
-    <div class="card">
-      <h3 class="small">Quick Actions</h3>
-      <div style="display:grid;gap:8px">
-        <button id="btnAd">I've watched an ad (claim)</button>
-        <button id="btnDaily">Claim Daily Reward</button>
-        <button id="btnLeaderboard">Show Leaderboard</button>
-      </div>
-      <div id="actionMsg" class="muted small" style="margin-top:8px"></div>
-    </div>
+  <div id="tasks" class="card">
+    <h4>Tasks</h4>
+    <div id="tasksList">Loading tasks...</div>
+  </div>
 
-    <div class="card">
-      <h3 class="small">Submit Proof (image)</h3>
-      <form id="proofForm">
-        <label>Task ID</label>
-        <input type="number" id="taskIdInput" required />
-        <label style="margin-top:6px">Choose image</label>
-        <input type="file" id="proofFile" accept="image/*" required />
-        <img id="preview" class="preview" style="display:none"/>
-        <div style="margin-top:8px">
-          <button type="submit">Submit Proof</button>
-        </div>
-        <div id="submitMsg" class="muted small" style="margin-top:8px"></div>
-      </form>
-    </div>
+  <div id="submit" class="card">
+    <h4>Submit Proof</h4>
+    <form id="proofForm">
+      Task ID: <input id="taskId" name="task_id" required /><br/><br/>
+      Choose image: <input id="fileInput" type="file" accept="image/*" required /><br/>
+      <img id="preview" class="preview" style="display:none"/><br/>
+      <button type="submit">Submit Proof</button>
+    </form>
+    <div id="submitResult"></div>
+  </div>
 
-    <div id="leaderboardCard" class="card" style="display:none">
-      <h3 class="small">Leaderboard</h3>
-      <div id="leaderboardList" class="small">Loading…</div>
-    </div>
+  <div id="mySubs" class="card">
+    <h4>My Submissions</h4>
+    <div id="subsList">Loading...</div>
+  </div>
 
+  <div id="adminPanel" class="card" style="display:none">
+    <h4>Admin — Pending Submissions</h4>
+    <div id="pendingList">Loading...</div>
   </div>
 
 <script>
-/*
-  Robust client for the WebApp:
-  - Reads init_data from Telegram WebApp if present
-  - Falls back to URL param "init_data"
-  - Calls /webapp/me, /webapp/get_tasks, /webapp/check_join, /webapp/ad_watched, /webapp/submit_proof, /webapp/daily_claim, /webapp/leaderboard
-  - Graceful error handling and user messages
-*/
-
-const STATUS = document.getElementById('status');
-const userCard = document.getElementById('userCard');
-const actions = document.getElementById('actions');
-const userNameEl = document.getElementById('userName');
-const userIdEl = document.getElementById('userId');
-const coinsEl = document.getElementById('coins');
-const boostInfo = document.getElementById('boostInfo');
-const tasksList = document.getElementById('tasksList');
-const actionMsg = document.getElementById('actionMsg');
-const previewImg = document.getElementById('preview');
-const submitMsg = document.getElementById('submitMsg');
-const leaderboardCard = document.getElementById('leaderboardCard');
-const leaderboardList = document.getElementById('leaderboardList');
-
-function setStatus(text, isError){
-  STATUS.textContent = text;
-  STATUS.className = isError ? 'card error' : 'card muted';
-}
-
-// Read init_data: support Telegram WebApp variable and URL param "init_data"
-function readInitData(){
-  try{
-    const tg = window.Telegram && window.Telegram.WebApp;
-    if(tg && tg.initData){
-      return tg.initData;
+let initData = null;
+async function init(){
+  document.getElementById('status').innerText = "Initializing...";
+  // Telegram WebApp init_data is normally provided via window.Telegram.WebApp.initData
+  // For testing, allow manual paste in prompt:
+  if(window.Telegram && Telegram.WebApp && Telegram.WebApp.initData){
+    initData = Telegram.WebApp.initData;
+  } else {
+    // dev prompt
+    if(!initData){
+      initData = prompt("Paste init_data for testing (or press Cancel to continue as guest):") || "";
     }
-  }catch(e){}
-  // fallback: try URL param 'init_data' or 'tgWebAppInitData'
-  try{
-    const u = new URL(window.location.href);
-    return u.searchParams.get('init_data') || u.searchParams.get('tgWebAppInitData') || null;
-  }catch(e){
-    return null;
   }
-}
-
-const initData = readInitData();
-
-if(!initData){
-  setStatus('No Telegram init data detected. Open this page as a Telegram WebApp (from your bot).', true);
-} else {
-  setStatus('Init data detected. Verifying with server…');
-  initialize();
-}
-
-async function initialize(){
-  try{
-    // call /webapp/me
-    const res = await fetch('/webapp/me', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({init_data: initData})
-    });
-    if(!res.ok){
-      const err = await res.json().catch(()=>({detail:'unknown'}));
-      setStatus('Server verification failed: ' + (err.detail || JSON.stringify(err)), true);
-      return;
-    }
-    const data = await res.json();
-    if(!data.ok){
-      setStatus('Server response not OK: ' + JSON.stringify(data), true);
-      return;
-    }
-    // fetch user info from init_data as well (if Telegram provided user)
-    let userName = 'User';
-    try{
-      const parsed = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) || null;
-      if(parsed && parsed.user){
-        userName = parsed.user.username || parsed.user.first_name || userName;
-        userIdEl.textContent = 'ID: ' + parsed.user.id;
-      }
-    }catch(e){}
-    userNameEl.textContent = userName;
-    coinsEl.textContent = data.coins || 0;
-    if(data.boost_until){
-      boostInfo.textContent = 'Boost active until: ' + data.boost_until;
-    } else {
-      boostInfo.textContent = '';
-    }
-    userCard.style.display = 'block';
-    actions.style.display = 'block';
-    setStatus('Loaded — you can interact with the Mini App.');
-    await loadTasks();
-  }catch(err){
-    console.error(err);
-    setStatus('Initialization error: ' + (err.message || err), true);
+  if(!initData){
+    document.getElementById('status').innerText = "No init_data provided. Use testing init_data or open via Telegram WebApp.";
+    return;
   }
+  // fetch /webapp/me
+  const r = await fetch('/webapp/me', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})});
+  const j = await r.json();
+  if(!j.ok){ document.getElementById('status').innerText = "Auth failed: "+(j.detail||JSON.stringify(j)); return; }
+  document.getElementById('status').innerText = "Ready";
+  document.getElementById('usercard').style.display='block';
+  document.getElementById('uname').innerText = j.username || 'User';
+  document.getElementById('uid').innerText = (j.referral_link||'').split('start=')[1]||'';
+  document.getElementById('coins').innerText = j.coins;
+  document.getElementById('ref').href = j.referral_link;
+  if(j.is_admin) document.getElementById('adminPanel').style.display='block';
+  // load tasks and submissions
+  loadTasks();
+  loadSubs();
+  if(j.is_admin) loadPending();
 }
 
+// tasks
 async function loadTasks(){
-  tasksList.textContent = 'Loading tasks…';
-  try{
-    const r = await fetch('/webapp/get_tasks?page=1&per_page=20');
-    const j = await r.json();
-    if(!j.ok){
-      tasksList.textContent = 'Could not load tasks.';
-      return;
-    }
-    if(j.tasks.length===0){
-      tasksList.textContent = 'No tasks available.';
-      return;
-    }
-    tasksList.innerHTML = '';
-    j.tasks.forEach(t=>{
-      const d = document.createElement('div');
-      d.className = 'small';
-      d.innerHTML = `<strong>(${t.task_id}) ${escapeHtml(t.title)}</strong><div class="muted small">${escapeHtml(t.description)}</div>
-      <div style="margin-top:6px">Reward: <strong>${t.reward}</strong> — <a href="${escapeAttr(t.link)}" target="_blank">Open link</a></div>`;
-      tasksList.appendChild(d);
-    });
-  }catch(e){
-    console.error(e);
-    tasksList.textContent = 'Error loading tasks.';
-  }
+  const r = await fetch('/webapp/get_tasks');
+  const j = await r.json();
+  const el = document.getElementById('tasksList');
+  if(!j.ok){ el.innerText = "Error loading tasks"; return; }
+  el.innerHTML = '';
+  j.tasks.forEach(t=>{
+    const d = document.createElement('div');
+    d.innerHTML = `<strong>${t.title}</strong> (Reward: ${t.reward})<br/>${t.description}<br/>Link: <a href="${t.link}" target="_blank">${t.link}</a><br/>Task ID: ${t.task_id}<hr/>`;
+    el.appendChild(d);
+  });
 }
 
-function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m];});}
-function escapeAttr(s){ return (s||'').replace(/"/g, '%22'); }
-
-// Ad watched
-document.getElementById('btnAd').addEventListener('click', async ()=>{
-  actionMsg.textContent = 'Claiming ad reward…';
-  try{
-    const r = await fetch('/webapp/ad_watched', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})
-    });
-    const j = await r.json();
-    if(!j.ok){
-      actionMsg.textContent = 'Error: ' + (j.error || JSON.stringify(j));
-      return;
-    }
-    coinsEl.textContent = j.coins_total;
-    actionMsg.textContent = 'Awarded ' + j.coins_awarded + ' coins. Total: ' + j.coins_total;
-  }catch(e){
-    console.error(e);
-    actionMsg.textContent = 'Network error while claiming ad.';
+// ad flow: get offer -> mock show -> verify
+document.getElementById('btnOffer').addEventListener('click', async ()=>{
+  document.getElementById('adStatus').innerText = "Requesting ad offer...";
+  const r = await fetch('/webapp/ad_offer', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})});
+  const j = await r.json();
+  if(!j.ok){ document.getElementById('adStatus').innerText = "Ad offer failed"; return; }
+  document.getElementById('adStatus').innerText = `Got ad id ${j.ad_id}. Showing mock ad...`;
+  // Mock ad: wait 3 seconds to simulate ad
+  await new Promise(res=>setTimeout(res,3000));
+  document.getElementById('adStatus').innerText = "Ad finished. Verifying...";
+  // Create a fake receipt token and call verify_ad
+  const receipt = "mock_receipt_"+Date.now();
+  const v = await fetch('/webapp/verify_ad', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData, ad_receipt: receipt})});
+  const vk = await v.json();
+  if(vk.ok){
+    document.getElementById('adStatus').innerText = `Ad verified. Awarded ${vk.coins_awarded} coins. Total: ${vk.coins_total}`;
+    document.getElementById('coins').innerText = vk.coins_total;
+  } else {
+    document.getElementById('adStatus').innerText = "Ad verification failed";
   }
 });
 
-// Daily claim
-document.getElementById('btnDaily').addEventListener('click', async ()=>{
-  actionMsg.textContent = 'Claiming daily reward…';
-  try{
-    const r = await fetch('/webapp/daily_claim', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})
-    });
-    const j = await r.json();
-    if(!j.ok){
-      actionMsg.textContent = 'Could not claim: ' + (j.msg || JSON.stringify(j));
-      return;
-    }
-    coinsEl.textContent = j.coins_total;
-    actionMsg.textContent = 'Daily claimed: +' + j.coins_awarded + ' coins.';
-  }catch(e){
-    actionMsg.textContent = 'Network error while claiming daily.';
+// quick claim (existing flow)
+document.getElementById('btnWatched').addEventListener('click', async ()=>{
+  document.getElementById('adStatus').innerText = "Claiming ad watched...";
+  const r = await fetch('/webapp/ad_watched', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})});
+  const j = await r.json();
+  if(j.ok){
+    document.getElementById('adStatus').innerText = `Awarded ${j.coins_awarded}. Total: ${j.coins_total}`;
+    document.getElementById('coins').innerText = j.coins_total;
+  } else {
+    document.getElementById('adStatus').innerText = "Claim failed: " + (j.error||JSON.stringify(j));
   }
 });
 
-// Leaderboard
-document.getElementById('btnLeaderboard').addEventListener('click', async ()=>{
-  leaderboardCard.style.display = 'block';
-  leaderboardList.textContent = 'Loading…';
-  try{
-    const r = await fetch('/webapp/leaderboard?page=1&per_page=20');
-    const j = await r.json();
-    if(!j.ok){ leaderboardList.textContent = 'Failed to load.'; return; }
-    leaderboardList.innerHTML = '';
-    j.leaderboard.forEach((p,idx)=>{
-      const el = document.createElement('div');
-      el.textContent = `${idx+1}. ${p.username || 'user'+p.user_id} — ${p.coins} coins`;
-      leaderboardList.appendChild(el);
-    });
-  }catch(e){
-    leaderboardList.textContent = 'Error loading leaderboard.';
-  }
-});
-
-// Submit proof form
-document.getElementById('proofFile').addEventListener('change', (ev)=>{
+// submit proof
+document.getElementById('fileInput').addEventListener('change', (ev)=>{
   const f = ev.target.files[0];
-  if(!f){ previewImg.style.display='none'; return; }
-  const url = URL.createObjectURL(f);
-  previewImg.src = url; previewImg.style.display='block';
+  if(!f) return;
+  const p = document.getElementById('preview');
+  p.src = URL.createObjectURL(f);
+  p.style.display = 'block';
 });
-
 document.getElementById('proofForm').addEventListener('submit', async (ev)=>{
   ev.preventDefault();
-  submitMsg.textContent = 'Uploading proof…';
-  const fileInput = document.getElementById('proofFile');
-  const taskId = document.getElementById('taskIdInput').value;
-  if(!fileInput.files[0]){ submitMsg.textContent = 'Please choose an image.'; return; }
+  const task_id = document.getElementById('taskId').value;
+  const file = document.getElementById('fileInput').files[0];
+  if(!task_id || !file){ alert('Provide Task ID and file'); return; }
   const fd = new FormData();
   fd.append('init_data', initData);
-  fd.append('task_id', taskId);
-  fd.append('file', fileInput.files[0]);
-  try{
-    const r = await fetch('/webapp/submit_proof', {method:'POST', body: fd});
-    const j = await r.json();
-    if(!j.ok){ submitMsg.textContent = 'Upload failed: ' + (j.detail || JSON.stringify(j)); return; }
-    submitMsg.textContent = j.msg || 'Submitted.';
-  }catch(e){
-    console.error(e);
-    submitMsg.textContent = 'Network error during submit.';
-  }
+  fd.append('task_id', task_id);
+  fd.append('file', file);
+  const r = await fetch('/webapp/submit_proof', {method:'POST', body: fd});
+  const j = await r.json();
+  document.getElementById('submitResult').innerText = JSON.stringify(j);
+  loadSubs();
+  if(document.getElementById('adminPanel').style.display!='none') loadPending();
 });
 
+// my submissions
+async function loadSubs(){
+  const r = await fetch('/webapp/my_submissions', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})});
+  const j = await r.json();
+  const el = document.getElementById('subsList'); el.innerHTML = '';
+  if(!j.ok){ el.innerText = "Error"; return; }
+  j.submissions.forEach(s=>{
+    const d = document.createElement('div');
+    d.innerHTML = `Task ${s.task_id} — ${s.status} — ${s.submitted_at} <br/>` + (s.file_url?`<a href="${s.file_url}" target="_blank">View Proof</a>`:"");
+    el.appendChild(d);
+  });
+}
+
+// admin: load pending and review
+async function loadPending(){
+  const r = await fetch('/webapp/pending_submissions', {method:'GET', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData})});
+  const j = await r.json();
+  const el = document.getElementById('pendingList'); el.innerHTML = '';
+  if(!j.ok){ el.innerText = "Error loading pending"; return; }
+  if(j.pending.length==0){ el.innerText = "No pending submissions."; return; }
+  j.pending.forEach(item=>{
+    const d = document.createElement('div');
+    d.innerHTML = `#${item.submission_id} — User: ${item.username} (${item.user_id}) — Task ${item.task_id} — ${item.submitted_at} <br/>` +
+      (item.file_url?`<a href="${item.file_url}" target="_blank">View</a>`:"") +
+      `<br/><button onclick="review(${item.submission_id},'approve')">Approve</button> <button onclick="review(${item.submission_id},'reject')">Reject</button><hr/>`;
+    el.appendChild(d);
+  });
+}
+
+async function review(submission_id, action){
+  const reason = prompt("Optional reason (for reject or note):") || "";
+  const r = await fetch('/webapp/review_submission', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({init_data: initData, submission_id: submission_id, action: action, reason: reason})});
+  const j = await r.json();
+  alert(JSON.stringify(j));
+  loadPending(); loadSubs();
+}
+
+// init on load
+window.addEventListener('load', init);
 </script>
 </body>
 </html>
