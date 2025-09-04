@@ -1,4 +1,4 @@
+fastapi==0.100.0
+uvicorn[standard]==0.23.1
 python-telegram-bot==20.7
-fastapi==0.115.0
-uvicorn==0.30.6
-python-multipart
+python-multipart==0.0.6
